@@ -19,7 +19,7 @@ import { ParsedAuthError, firebaseConfig } from '../firebase';
 import { BrandLogo } from './BrandLogo';
 
 interface AuthScreenProps {
-  onGoogleSignIn: (usePopupFallback?: boolean) => Promise<void>;
+  onGoogleSignIn: (useRedirectFallback?: boolean) => Promise<void>;
   onEnterDemoMode: () => void;
   authError: ParsedAuthError | null;
 }
@@ -29,7 +29,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
   onEnterDemoMode,
   authError,
 }) => {
-  const [loadingMode, setLoadingMode] = useState<'redirect' | 'popup' | null>(
+  const [loadingMode, setLoadingMode] = useState<'popup' | 'redirect' | null>(
     null
   );
   const [copiedDomain, setCopiedDomain] = useState(false);
@@ -39,10 +39,13 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
       ? window.location.hostname
       : 'my-book-buddy3-wpxk.vercel.app';
 
-  const handleLogin = async (usePopupFallback = false) => {
-    setLoadingMode(usePopupFallback ? 'popup' : 'redirect');
+  // Trigger signInWithGoogle synchronously before state updates / microtasks
+  // so mobile & desktop browsers preserve the transient user activation for popups.
+  const handleLogin = async (useRedirectFallback = false) => {
+    const signInPromise = onGoogleSignIn(useRedirectFallback);
+    setLoadingMode(useRedirectFallback ? 'redirect' : 'popup');
     try {
-      await onGoogleSignIn(usePopupFallback);
+      await signInPromise;
     } finally {
       setLoadingMode(null);
     }
@@ -150,7 +153,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
                   <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
                   <div className="space-y-1">
                     <p className="font-extrabold text-rose-300">
-                      Authentication Error: {authError.code}
+                      Authentication Notice ({authError.code})
                     </p>
                     <p className="leading-relaxed">{authError.message}</p>
                   </div>
@@ -159,7 +162,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
                 {authError.code === 'auth/unauthorized-domain' && (
                   <div className="p-3 rounded-xl bg-[#070A18]/95 border border-rose-500/30 space-y-2.5 text-[11px]">
                     <div className="font-bold text-[#FFD13B]">
-                      Required 1-Time Firebase Console Step:
+                      Required Firebase Console Step:
                     </div>
                     <ol className="list-decimal list-inside space-y-1 text-slate-300">
                       <li>
@@ -174,7 +177,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
                         .
                       </li>
                       <li>
-                        Click <strong className="text-white">Add domain</strong> and paste this exact Vercel hostname:
+                        Click <strong className="text-white">Add domain</strong> and add this exact Vercel hostname:
                       </li>
                     </ol>
 
@@ -207,34 +210,34 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
                   </div>
                 )}
 
-                {authError.canUseRedirect && (
+                {authError.canRetryPopup && (
                   <button
                     type="button"
                     disabled={loadingMode !== null}
                     onClick={() => handleLogin(false)}
                     className="w-full py-2.5 px-4 rounded-xl bg-[#10B981] hover:bg-[#059669] text-white font-extrabold text-xs flex items-center justify-center gap-1.5 shadow-md transition-all cursor-pointer"
                   >
-                    <span>Continue with Google Redirect (Recommended)</span>
-                    <ArrowRight className="w-3.5 h-3.5" />
+                    <span>Sign In with Google Popup Now</span>
+                    <ExternalLink className="w-3.5 h-3.5" />
                   </button>
                 )}
 
-                {authError.canUsePopupFallback && (
+                {authError.canUseRedirectFallback && (
                   <button
                     type="button"
                     disabled={loadingMode !== null}
                     onClick={() => handleLogin(true)}
                     className="w-full py-2 px-4 rounded-xl bg-[#121836] hover:bg-[#1E293B] border border-[#38BDF8]/40 text-[#38BDF8] font-extrabold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer"
                   >
-                    <span>Try Popup Sign-In Fallback</span>
-                    <ExternalLink className="w-3.5 h-3.5" />
+                    <span>Try Redirect Sign-In Fallback</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
                   </button>
                 )}
               </div>
             )}
 
             <div className="space-y-3">
-              {/* Primary Redirect-Based Google Sign-In Button */}
+              {/* Primary Popup-Based Google Sign-In Button (Works without 3rd-party redirect cookies) */}
               <button
                 type="button"
                 disabled={loadingMode !== null}
@@ -243,13 +246,13 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
               >
                 <CheckCircle2 className="w-5 h-5 shrink-0" />
                 <span>
-                  {loadingMode === 'redirect'
-                    ? 'Redirecting to Google Sign-In...'
+                  {loadingMode === 'popup'
+                    ? 'Signing in with Google...'
                     : 'Continue with Google'}
                 </span>
               </button>
 
-              {/* Optional Popup Fallback Button */}
+              {/* Optional Redirect Fallback Button */}
               <button
                 type="button"
                 disabled={loadingMode !== null}
@@ -258,9 +261,9 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
               >
                 <ArrowRight className="w-4 h-4 shrink-0" />
                 <span>
-                  {loadingMode === 'popup'
-                    ? 'Opening Google Sign-In Popup...'
-                    : 'Sign In with Google Popup (Optional Fallback)'}
+                  {loadingMode === 'redirect'
+                    ? 'Redirecting to Google...'
+                    : 'Sign In via Full-Page Redirect (If Popup Blocked)'}
                 </span>
               </button>
 

@@ -17,7 +17,6 @@ import {
   auth,
   db,
   signInWithGoogle,
-  signInWithGoogleRedirect,
   checkGoogleRedirectResult,
   formatFirebaseAuthError,
   ParsedAuthError,
@@ -221,13 +220,9 @@ export default function App() {
           setAuthError(null);
           showToast('Signed in with Google! Live Firebase Marketplace active.');
         } else if (wasRedirectAttempt && !auth.currentUser) {
-          setAuthError({
-            code: 'auth/redirect-session-partitioned',
-            canUseRedirect: false,
-            canUsePopupFallback: true,
-            message:
-              'Your browser restricted cross-domain redirect cookies. Click "Try Popup Sign-In Fallback" below to complete sign-in.',
-          });
+          setAuthError(
+            formatFirebaseAuthError({ code: 'auth/redirect-session-partitioned' })
+          );
         }
         markReadyIfDone();
       })
@@ -769,12 +764,12 @@ export default function App() {
     [requests, currentUser.id]
   );
 
-  // Auth Handlers
-  const handleGoogleSignIn = async (usePopupFallback = false) => {
-    setAuthError(null);
+  // Auth Handlers (Primary = Popup Sign-In; Optional Fallback = Redirect)
+  const handleGoogleSignIn = async (useRedirectFallback = false) => {
     try {
-      const cred = await signInWithGoogle(usePopupFallback);
+      const cred = await signInWithGoogle(useRedirectFallback);
       if (cred?.user) {
+        setAuthError(null);
         setIsDemoMode(false);
         setActiveScreen('home');
         showToast('Signed in with Google! Live Firebase Marketplace active.');
