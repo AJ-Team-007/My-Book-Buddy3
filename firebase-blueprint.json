@@ -1,0 +1,505 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Public student profile stored at /users/{uid}. Contains no private email or phone number.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "displayName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "photoURL": {
+          "type": "string",
+          "maxLength": 200000
+        },
+        "email": {
+          "type": "string",
+          "maxLength": 150
+        },
+        "class": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40
+        },
+        "classGrade": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40
+        },
+        "board": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40
+        },
+        "school": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "avatarGradient": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "initials": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 6
+        },
+        "memberSince": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "uid",
+        "name",
+        "displayName",
+        "photoURL",
+        "class",
+        "classGrade",
+        "board",
+        "school",
+        "avatarGradient",
+        "initials",
+        "memberSince",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "BookListing": {
+      "title": "BookListing",
+      "description": "Real multi-user student book listing stored at /books/{bookId}.",
+      "type": "object",
+      "properties": {
+        "sellerId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "sellerName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "sellerDisplay": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 150
+        },
+        "author": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "subject": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 60
+        },
+        "classGrade": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40
+        },
+        "board": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40
+        },
+        "medium": {
+          "type": "string",
+          "enum": ["English", "Hindi"]
+        },
+        "edition": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "condition": {
+          "type": "string",
+          "enum": ["Like New", "Good", "Used", "Heavily Used"]
+        },
+        "price": {
+          "type": "number"
+        },
+        "originalPrice": {
+          "type": "number"
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "coverImage": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200000
+        },
+        "galleryImages": {
+          "type": "array"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["Available", "Sold"]
+        },
+        "requestsCount": {
+          "type": "number"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "sellerId",
+        "sellerName",
+        "sellerDisplay",
+        "title",
+        "author",
+        "subject",
+        "classGrade",
+        "board",
+        "medium",
+        "edition",
+        "condition",
+        "price",
+        "originalPrice",
+        "description",
+        "coverImage",
+        "galleryImages",
+        "status",
+        "requestsCount",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "BuyRequest": {
+      "title": "BuyRequest",
+      "description": "Real buy request stored at /buyRequests/{requestId}.",
+      "type": "object",
+      "properties": {
+        "requestId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "listingId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "bookTitle": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 150
+        },
+        "bookCover": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200000
+        },
+        "bookPrice": {
+          "type": "number"
+        },
+        "bookCondition": {
+          "type": "string",
+          "enum": ["Like New", "Good", "Used", "Heavily Used"]
+        },
+        "buyerId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "buyerName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "buyerAvatarGradient": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "buyerInitials": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 6
+        },
+        "sellerId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "sellerName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 250
+        },
+        "status": {
+          "type": "string",
+          "enum": ["Pending", "Accepted", "Declined", "Completed"]
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "requestId",
+        "listingId",
+        "bookTitle",
+        "bookCover",
+        "bookPrice",
+        "bookCondition",
+        "buyerId",
+        "buyerName",
+        "buyerAvatarGradient",
+        "buyerInitials",
+        "sellerId",
+        "sellerName",
+        "message",
+        "status",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "Conversation": {
+      "title": "Conversation",
+      "description": "Real 2-user conversation stored at /conversations/{conversationId}.",
+      "type": "object",
+      "properties": {
+        "conversationId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "participantIds": {
+          "type": "array"
+        },
+        "buyerId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "sellerId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "listingId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "bookTitle": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 150
+        },
+        "bookPrice": {
+          "type": "number"
+        },
+        "bookCondition": {
+          "type": "string",
+          "enum": ["Like New", "Good", "Used", "Heavily Used"]
+        },
+        "bookCover": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200000
+        },
+        "lastMessage": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "lastMessageSenderId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "lastMessageAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "conversationId",
+        "participantIds",
+        "buyerId",
+        "sellerId",
+        "listingId",
+        "bookTitle",
+        "bookPrice",
+        "bookCondition",
+        "bookCover",
+        "lastMessage",
+        "lastMessageSenderId",
+        "lastMessageAt",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "ChatMessage": {
+      "title": "ChatMessage",
+      "description": "Real-time message inside /conversations/{conversationId}/messages/{messageId}.",
+      "type": "object",
+      "properties": {
+        "messageId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "conversationId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "participantIds": {
+          "type": "array"
+        },
+        "senderId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "attachedPhoto": {
+          "type": "string",
+          "maxLength": 200000
+        },
+        "read": {
+          "type": "boolean"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "messageId",
+        "conversationId",
+        "participantIds",
+        "senderId",
+        "text",
+        "read",
+        "createdAt"
+      ]
+    },
+    "BookReport": {
+      "title": "BookReport",
+      "description": "Moderation report submitted for a book listing.",
+      "type": "object",
+      "properties": {
+        "bookTitle": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 150
+        },
+        "reporterUid": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "notes": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "bookTitle",
+        "reporterUid",
+        "reason",
+        "notes",
+        "createdAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Authenticated student profiles."
+    },
+    "/books/{bookId}": {
+      "schema": { "$ref": "#/entities/BookListing" },
+      "description": "Real marketplace book listings."
+    },
+    "/buyRequests/{requestId}": {
+      "schema": { "$ref": "#/entities/BuyRequest" },
+      "description": "Real student buy requests."
+    },
+    "/conversations/{conversationId}": {
+      "schema": { "$ref": "#/entities/Conversation" },
+      "description": "Real 2-user conversations."
+    },
+    "/conversations/{conversationId}/messages/{messageId}": {
+      "schema": { "$ref": "#/entities/ChatMessage" },
+      "description": "Real-time messages inside a conversation."
+    },
+    "/reports/{reportId}": {
+      "schema": { "$ref": "#/entities/BookReport" },
+      "description": "Listing moderation reports."
+    }
+  }
+}
