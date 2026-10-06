@@ -1,4 +1,4 @@
-import { initializeApp } from 'firebase/app';
+import { initializeApp, getApps, getApp } from 'firebase/app';
 import {
   getAuth,
   GoogleAuthProvider,
@@ -23,7 +23,7 @@ import {
 } from 'firebase/storage';
 import defaultFirebaseConfig from '../firebase-applet-config.json';
 
-const firebaseConfig = {
+export const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY || defaultFirebaseConfig.apiKey,
   authDomain:
     import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || defaultFirebaseConfig.authDomain,
@@ -41,7 +41,9 @@ const firebaseConfig = {
     defaultFirebaseConfig.firestoreDatabaseId,
 };
 
-const app = initializeApp(firebaseConfig);
+// Initialize Firebase only once (singleton guard)
+export const app =
+  getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 export const auth = getAuth(app);
@@ -54,8 +56,13 @@ googleProvider.setCustomParameters({
   prompt: 'select_account',
 });
 
+const REDIRECT_PENDING_KEY = 'mbb_google_redirect_pending';
+
 // Ensure persistent login across redirects and page refreshes
-setPersistence(auth, browserLocalPersistence).catch((err) => {
+export const persistenceReady = setPersistence(
+  auth,
+  browserLocalPersistence
+).catch((err) => {
   console.warn('Firebase Auth persistence setup notice:', err);
 });
 
@@ -145,7 +152,9 @@ export interface ParsedAuthError {
   code: string;
   message: string;
   canUseRedirect: boolean;
+  canUsePopupFallback?: boolean;
   unauthorizedDomain?: string;
+  projectId?: string;
 }
 
 export function formatFirebaseAuthError(error: unknown): ParsedAuthError {
@@ -155,7 +164,9 @@ export function formatFirebaseAuthError(error: unknown): ParsedAuthError {
       : '';
   const rawMessage = error instanceof Error ? error.message : String(error);
   const currentHost =
-    typeof window !== 'undefined' ? window.location.hostname : 'your Vercel domain';
+    typeof window !== 'undefined' && window.location.hostname
+      ? window.location.hostname
+      : 'my-book-buddy3-wpxk.vercel.app';
 
   if (
     rawCode.includes('auth/unauthorized-domain') ||
@@ -164,8 +175,10 @@ export function formatFirebaseAuthError(error: unknown): ParsedAuthError {
     return {
       code: 'auth/unauthorized-domain',
       unauthorizedDomain: currentHost,
+      projectId: firebaseConfig.projectId,
       canUseRedirect: false,
-      message: `Domain "${currentHost}" is not yet authorized in Firebase Authentication. Add "${currentHost}" in Firebase Console → Authentication → Settings → Authorized domains (Project ID: ${firebaseConfig.projectId}).`,
+      canUsePopupFallback: false,
+      message: `The domain "${currentHost}" is not yet authorized in Firebase Authentication for project "${firebaseConfig.projectId}". You must add "${currentHost}" manually in: Firebase Console → Authentication → Settings → Authorized domains.`,
     };
   }
 
@@ -176,8 +189,9 @@ export function formatFirebaseAuthError(error: unknown): ParsedAuthError {
     return {
       code: 'auth/popup-blocked',
       canUseRedirect: !isEmbeddedInIframe(),
+      canUsePopupFallback: false,
       message:
-        'Your browser blocked the sign-in popup. Click "Continue with Google Redirect (No Popup)" below to sign in directly in this tab.',
+        'Your browser blocked the sign-in popup. Use the Redirect Sign-In button below to sign in directly in this tab without a popup.',
     };
   }
 
@@ -189,8 +203,9 @@ export function formatFirebaseAuthError(error: unknown): ParsedAuthError {
     return {
       code: 'auth/popup-closed-by-user',
       canUseRedirect: !isEmbeddedInIframe(),
+      canUsePopupFallback: true,
       message:
-        'The Google Sign-In window was closed before completing login. You can click "Continue with Google Redirect (No Popup)" below to sign in without a popup.',
+        'The Google Sign-In window was closed before completing login. Use "Continue with Google (Redirect)" to sign in without a popup.',
     };
   }
 
@@ -201,6 +216,7 @@ export function formatFirebaseAuthError(error: unknown): ParsedAuthError {
     return {
       code: 'auth/account-exists-with-different-credential',
       canUseRedirect: false,
+      canUsePopupFallback: false,
       message:
         'An account already exists with the same email address under a different sign-in credential. Please sign in with your original account method.',
     };
@@ -212,15 +228,17 @@ export function formatFirebaseAuthError(error: unknown): ParsedAuthError {
   ) {
     return {
       code: 'auth/network-request-failed',
-      canUseRedirect: true,
+      canUseRedirect: !isEmbeddedInIframe(),
+      canUsePopupFallback: true,
       message:
-        'Network request failed while connecting to Google Authentication. Please check your internet connection or firewall/ad-blocker and try again.',
+        'Network request failed while connecting to Google Authentication. Please check your internet connection or ad-blocker and try again.',
     };
   }
 
   return {
-    code: rawCode || 'auth/unknown',
+    code: rawCode || 'auth/error',
     canUseRedirect: !isEmbeddedInIframe(),
+    canUsePopupFallback: true,
     message: rawMessage || 'Unable to complete Google Sign-In. Please try again.',
   };
 }
@@ -228,22 +246,43 @@ export function formatFirebaseAuthError(error: unknown): ParsedAuthError {
 /**
  * Checks and resolves any pending Google Sign-In redirect result on page load.
  */
-export async function checkGoogleRedirectResult(): Promise<UserCredential | null> {
+export async function checkGoogleRedirectResult(): Promise<{
+  credential: UserCredential | null;
+  wasRedirectAttempt: boolean;
+}> {
+  const wasRedirectAttempt =
+    typeof sessionStorage !== 'undefined' &&
+    sessionStorage.getItem(REDIRECT_PENDING_KEY) === '1';
+
   try {
+    await persistenceReady;
     const result = await getRedirectResult(auth);
-    return result;
+    if (typeof sessionStorage !== 'undefined') {
+      sessionStorage.removeItem(REDIRECT_PENDING_KEY);
+    }
+    return { credential: result, wasRedirectAttempt };
   } catch (err) {
+    if (typeof sessionStorage !== 'undefined') {
+      sessionStorage.removeItem(REDIRECT_PENDING_KEY);
+    }
     console.error('Firebase getRedirectResult error:', err);
     throw err;
   }
 }
 
 /**
- * Explicitly initiates redirect-based Google Sign-In (no popup required).
- * Falls back to popup only if running inside a cross-origin preview iframe where top-level redirect is blocked by Google X-Frame-Options.
+ * Primary Google Sign-In method:
+ * Uses Firebase's redirect-based authentication (signInWithRedirect) on standalone web & mobile browsers.
+ * Falls back to popup only if running inside an embedded iframe where top-level redirects are blocked by Google X-Frame-Options.
  */
 export async function signInWithGoogleRedirect(): Promise<UserCredential | null> {
+  await persistenceReady;
   if (!isEmbeddedInIframe()) {
+    try {
+      sessionStorage.setItem(REDIRECT_PENDING_KEY, '1');
+    } catch {
+      // Ignore storage error
+    }
     await signInWithRedirect(auth, googleProvider);
     return null;
   }
@@ -251,20 +290,15 @@ export async function signInWithGoogleRedirect(): Promise<UserCredential | null>
 }
 
 /**
- * Primary Google Sign-In flow:
- * - Uses redirect authentication automatically on mobile/tablet browsers or when preferRedirect is true (if not inside an iframe).
- * - Otherwise attempts signInWithPopup and automatically switches to signInWithRedirect if the browser blocks popups.
+ * Optional Popup Fallback Google Sign-In:
+ * Attempts signInWithPopup and automatically switches to signInWithRedirect if the browser blocks popups.
  */
-export async function signInWithGoogle(
-  preferRedirect = false
-): Promise<UserCredential | null> {
+export async function signInWithGooglePopupFallback(): Promise<UserCredential | null> {
+  await persistenceReady;
   const inIframe = isEmbeddedInIframe();
-  const useRedirectFirst =
-    !inIframe && (preferRedirect || isMobileOrTabletBrowser());
 
-  if (useRedirectFirst) {
-    await signInWithRedirect(auth, googleProvider);
-    return null;
+  if (!inIframe && isMobileOrTabletBrowser()) {
+    return signInWithGoogleRedirect();
   }
 
   try {
@@ -275,22 +309,39 @@ export async function signInWithGoogle(
         ? String((err as { code?: unknown }).code || '')
         : '';
 
-    // Automatically fall back to redirect when popup is blocked or unsupported
     if (
       !inIframe &&
       (code === 'auth/popup-blocked' ||
         code === 'auth/operation-not-supported-in-this-environment' ||
         code === 'auth/cancelled-popup-request')
     ) {
-      await signInWithRedirect(auth, googleProvider);
-      return null;
+      return signInWithGoogleRedirect();
     }
 
     throw err;
   }
 }
 
+/**
+ * Unified Google Sign-In entry point:
+ * - Default (usePopupFallback = false): uses signInWithRedirect on deployed Vercel / standalone web & mobile browsers.
+ * - Optional (usePopupFallback = true): uses signInWithPopup with automatic redirect fallback if blocked.
+ */
+export async function signInWithGoogle(
+  usePopupFallback = false
+): Promise<UserCredential | null> {
+  if (usePopupFallback) {
+    return signInWithGooglePopupFallback();
+  }
+  return signInWithGoogleRedirect();
+}
+
 export async function signOutUser() {
+  try {
+    sessionStorage.removeItem(REDIRECT_PENDING_KEY);
+  } catch {
+    // Ignore storage error
+  }
   return firebaseSignOut(auth);
 }
 

@@ -202,22 +202,53 @@ export default function App() {
 
   // 1. Listen to Firebase Authentication State, Handle Redirect Result & Create/Update /users/{uid}
   useEffect(() => {
+    let isMounted = true;
+    let redirectChecked = false;
+    let initialAuthFired = false;
+
+    const markReadyIfDone = () => {
+      if (isMounted && redirectChecked && initialAuthFired) {
+        setAuthReady(true);
+      }
+    };
+
     checkGoogleRedirectResult()
-      .then((result) => {
-        if (result?.user) {
+      .then(({ credential, wasRedirectAttempt }) => {
+        if (!isMounted) return;
+        redirectChecked = true;
+        if (credential?.user) {
           setIsDemoMode(false);
           setAuthError(null);
           showToast('Signed in with Google! Live Firebase Marketplace active.');
+        } else if (wasRedirectAttempt && !auth.currentUser) {
+          setAuthError({
+            code: 'auth/redirect-session-partitioned',
+            canUseRedirect: false,
+            canUsePopupFallback: true,
+            message:
+              'Your browser restricted cross-domain redirect cookies. Click "Try Popup Sign-In Fallback" below to complete sign-in.',
+          });
         }
+        markReadyIfDone();
       })
       .catch((err) => {
+        if (!isMounted) return;
+        redirectChecked = true;
         const parsed = formatFirebaseAuthError(err);
         setAuthError(parsed);
+        markReadyIfDone();
       });
 
     const unsub = onAuthStateChanged(auth, async (user) => {
+      if (!isMounted) return;
       setFirebaseUser(user);
-      setAuthReady(true);
+      initialAuthFired = true;
+      if (user) {
+        // If user is already authenticated, no need to block on redirect check
+        setAuthReady(true);
+      } else {
+        markReadyIfDone();
+      }
 
       if (user) {
         setIsDemoMode(false);
@@ -341,7 +372,10 @@ export default function App() {
         }
       }
     });
-    return () => unsub();
+    return () => {
+      isMounted = false;
+      unsub();
+    };
   }, []);
 
   // 2. Real-time Firestore Listeners for Authenticated Users (Books, BuyRequests, Conversations)
@@ -736,12 +770,10 @@ export default function App() {
   );
 
   // Auth Handlers
-  const handleGoogleSignIn = async (preferRedirect = false) => {
+  const handleGoogleSignIn = async (usePopupFallback = false) => {
     setAuthError(null);
     try {
-      const cred = preferRedirect
-        ? await signInWithGoogleRedirect()
-        : await signInWithGoogle(false);
+      const cred = await signInWithGoogle(usePopupFallback);
       if (cred?.user) {
         setIsDemoMode(false);
         setActiveScreen('home');
