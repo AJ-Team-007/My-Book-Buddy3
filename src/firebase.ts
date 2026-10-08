@@ -74,6 +74,10 @@ function createOrGetAuth(): Auth {
 export const auth = createOrGetAuth();
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 export const storage = getStorage(app);
+storage.maxUploadRetryTime = 2000;
+storage.maxOperationRetryTime = 2000;
+
+let isFirebaseStorageReachable = true;
 
 export const googleProvider = new GoogleAuthProvider();
 googleProvider.addScope('profile');
@@ -363,56 +367,85 @@ export async function signOutUser() {
 }
 
 /**
- * Compresses an uploaded image file to a lightweight Data URL (< 120KB)
+ * Compresses an uploaded image file to a lightweight Data URL (< 150KB)
  * and attempts to upload to Firebase Storage if available, returning a public URL or safe Data URL.
  */
 export async function processAndUploadBookImage(file: File): Promise<string> {
-  const dataUrl = await compressImageToDataUrl(file, 720, 0.72);
-  try {
-    if (auth.currentUser) {
-      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+  const dataUrl = await compressImageToDataUrl(file, 640, 0.72);
+  if (isFirebaseStorageReachable && auth.currentUser) {
+    try {
+      const uid = auth.currentUser.uid;
+      const safeName = (file.name || 'photo.jpg').replace(/[^a-zA-Z0-9._-]/g, '_');
       const storageRef = ref(
         storage,
-        `book_images/${auth.currentUser.uid}/${Date.now()}_${safeName}`
+        `book_images/${uid}/${Date.now()}_${safeName}`
       );
-      await uploadString(storageRef, dataUrl, 'data_url');
-      const downloadUrl = await getDownloadURL(storageRef);
+      const uploadTask = (async () => {
+        await uploadString(storageRef, dataUrl, 'data_url');
+        return await getDownloadURL(storageRef);
+      })();
+      const timeoutTask = new Promise<string>((_, reject) => {
+        window.setTimeout(
+          () => reject(new Error('Firebase Storage upload timed out')),
+          2500
+        );
+      });
+      const downloadUrl = await Promise.race([uploadTask, timeoutTask]);
       if (downloadUrl && downloadUrl.length <= 200000) {
         return downloadUrl;
       }
+    } catch {
+      // Mark Storage unreachable for this session so subsequent uploads don't wait on CORS/bucket timeouts
+      isFirebaseStorageReachable = false;
     }
-  } catch {
-    // Fallback to compressed Data URL if Storage bucket rules/provisioning are restricted
   }
-  return dataUrl.slice(0, 195000);
+  return dataUrl;
 }
 
 function compressImageToDataUrl(
   file: File,
-  maxWidth = 720,
-  quality = 0.72
+  maxDimension = 640,
+  initialQuality = 0.72
 ): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onerror = () => reject(new Error('Failed to read image file'));
     reader.onload = () => {
+      const rawDataUrl = String(reader.result || '');
       const img = new Image();
-      img.onerror = () => resolve(String(reader.result || '').slice(0, 195000));
+      img.onerror = () => resolve(rawDataUrl);
       img.onload = () => {
-        const scale = Math.min(1, maxWidth / (img.width || maxWidth));
-        const canvas = document.createElement('canvas');
-        canvas.width = Math.round(img.width * scale);
-        canvas.height = Math.round(img.height * scale);
-        const ctx = canvas.getContext('2d');
-        if (!ctx) {
-          resolve(String(reader.result || '').slice(0, 195000));
-          return;
+        let currentMaxDim = maxDimension;
+        let quality = initialQuality;
+        const origW = img.width || currentMaxDim;
+        const origH = img.height || currentMaxDim;
+
+        for (let attempt = 0; attempt < 4; attempt++) {
+          const scale = Math.min(
+            1,
+            currentMaxDim / Math.max(origW, origH, 1)
+          );
+          const canvas = document.createElement('canvas');
+          canvas.width = Math.max(1, Math.round(origW * scale));
+          canvas.height = Math.max(1, Math.round(origH * scale));
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            resolve(rawDataUrl);
+            return;
+          }
+          ctx.fillStyle = '#FFFFFF';
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          const compressed = canvas.toDataURL('image/jpeg', quality);
+          if (compressed.length <= 150000 || attempt === 3) {
+            resolve(compressed);
+            return;
+          }
+          currentMaxDim = Math.round(currentMaxDim * 0.75);
+          quality = Math.max(0.4, quality - 0.12);
         }
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-        const compressed = canvas.toDataURL('image/jpeg', quality);
-        resolve(compressed.slice(0, 195000));
       };
-      img.src = String(reader.result);
+      img.src = rawDataUrl;
     };
     reader.readAsDataURL(file);
   });

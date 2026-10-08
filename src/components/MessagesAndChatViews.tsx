@@ -182,6 +182,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
 }) => {
   const [inputText, setInputText] = useState('');
   const [menuOpen, setMenuOpen] = useState(false);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -198,9 +199,22 @@ export const ChatView: React.FC<ChatViewProps> = ({
 
   const handleAttachPhotoFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    e.target.value = '';
     if (!file) return;
-    const uploadedUrl = await processAndUploadBookImage(file);
-    onSendMessage('Here is a clear photo of the textbook pages:', uploadedUrl);
+    setUploadingPhoto(true);
+    try {
+      const uploadedUrl = await processAndUploadBookImage(file);
+      const caption =
+        inputText.trim() || 'Here is a clear photo of the textbook pages:';
+      if (inputText.trim()) {
+        setInputText('');
+      }
+      onSendMessage(caption, uploadedUrl);
+    } catch (err) {
+      console.error('Failed to process chat image:', err);
+    } finally {
+      setUploadingPhoto(false);
+    }
   };
 
   return (
@@ -418,11 +432,12 @@ export const ChatView: React.FC<ChatViewProps> = ({
         />
         <button
           type="button"
+          disabled={uploadingPhoto}
           onClick={() => fileInputRef.current?.click()}
           aria-label="Attach book photo"
-          className="w-10 h-10 rounded-xl bg-[#0B0F26] hover:bg-white/10 border border-white/10 flex items-center justify-center text-[#38BDF8] shrink-0"
+          className="w-10 h-10 rounded-xl bg-[#0B0F26] hover:bg-white/10 disabled:opacity-50 border border-white/10 flex items-center justify-center text-[#38BDF8] shrink-0"
         >
-          <Camera className="w-4 h-4" />
+          <Camera className={`w-4 h-4 ${uploadingPhoto ? 'animate-pulse' : ''}`} />
         </button>
 
         <input
