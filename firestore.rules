@@ -317,7 +317,7 @@ service cloud.firestore {
     // Collection: /users/{userId}
     // Public student profile info (no email or phone stored)
     match /users/{userId} {
-      allow get: if isSignedIn() && isValidId(userId) && existing().uid == userId;
+      allow get: if isSignedIn() && isValidId(userId) && (resource == null || existing().uid == userId);
       allow list: if isSignedIn() && existing().uid == request.auth.uid;
       allow create: if isVerifiedUser() && isValidId(userId) && userId == request.auth.uid &&
         isValidUserProfile(incoming()) &&
@@ -336,7 +336,7 @@ service cloud.firestore {
     // Collection: /books/{bookId}
     // Authenticated users can read available listings or their own listings; only owner can create/update/delete
     match /books/{bookId} {
-      allow get: if isSignedIn() && isValidId(bookId) && (existing().status == 'Available' || existing().sellerId == request.auth.uid);
+      allow get: if isSignedIn() && isValidId(bookId) && (resource == null || existing().status == 'Available' || existing().sellerId == request.auth.uid);
       allow list: if isSignedIn() && (existing().status == 'Available' || existing().sellerId == request.auth.uid);
       allow create: if isVerifiedUser() && isValidId(bookId) &&
         isValidBookListing(incoming()) &&
@@ -369,7 +369,7 @@ service cloud.firestore {
     // Buyers can create & read their own requests; Sellers can read & accept/decline requests for their listings
     match /buyRequests/{requestId} {
       allow get: if isSignedIn() && isValidId(requestId) &&
-        (existing().buyerId == request.auth.uid || existing().sellerId == request.auth.uid);
+        (resource == null || existing().buyerId == request.auth.uid || existing().sellerId == request.auth.uid);
       allow list: if isSignedIn() &&
         (existing().buyerId == request.auth.uid || existing().sellerId == request.auth.uid);
       allow create: if isVerifiedUser() && isValidId(requestId) &&
@@ -399,7 +399,7 @@ service cloud.firestore {
     // Only participants of a conversation can read/write the conversation and its messages
     match /conversations/{conversationId} {
       allow get: if isSignedIn() && isValidId(conversationId) &&
-        (existing().buyerId == request.auth.uid || existing().sellerId == request.auth.uid);
+        (resource == null || existing().buyerId == request.auth.uid || existing().sellerId == request.auth.uid || (request.auth.uid in existing().participantIds));
       allow list: if isSignedIn() &&
         (request.auth.uid in existing().participantIds);
       allow create: if isVerifiedUser() && isValidId(conversationId) &&
@@ -420,7 +420,7 @@ service cloud.firestore {
         incoming().listingId == existing().listingId &&
         incoming().createdAt == existing().createdAt &&
         incoming().updatedAt == request.time &&
-        (existing().buyerId == request.auth.uid || existing().sellerId == request.auth.uid) &&
+        (existing().buyerId == request.auth.uid || existing().sellerId == request.auth.uid || (request.auth.uid in existing().participantIds)) &&
         incoming().diff(existing()).affectedKeys().hasOnly([
           'lastMessage', 'lastMessageSenderId', 'lastMessageAt', 'updatedAt'
         ]);
@@ -428,8 +428,10 @@ service cloud.firestore {
       // Subcollection: /conversations/{conversationId}/messages/{messageId}
       match /messages/{messageId} {
         allow get: if isSignedIn() && isValidId(conversationId) && isValidId(messageId) &&
-          (request.auth.uid in existing().participantIds) &&
-          (request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participantIds);
+          (resource == null || (
+            (request.auth.uid in existing().participantIds) &&
+            (request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participantIds)
+          ));
         allow list: if isSignedIn() &&
           (request.auth.uid in existing().participantIds);
         allow create: if isVerifiedUser() && isValidId(conversationId) && isValidId(messageId) &&
@@ -438,8 +440,12 @@ service cloud.firestore {
           incoming().conversationId == conversationId &&
           incoming().senderId == request.auth.uid &&
           incoming().createdAt == request.time &&
-          incoming().participantIds == get(/databases/$(database)/documents/conversations/$(conversationId)).data.participantIds &&
-          (request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participantIds);
+          (
+            (exists(/databases/$(database)/documents/conversations/$(conversationId)) &&
+              (request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participantIds)) ||
+            (existsAfter(/databases/$(database)/documents/conversations/$(conversationId)) &&
+              (request.auth.uid in getAfter(/databases/$(database)/documents/conversations/$(conversationId)).data.participantIds))
+          );
         allow update: if isVerifiedUser() && isValidId(conversationId) && isValidId(messageId) &&
           isValidChatMessage(incoming()) &&
           incoming().messageId == existing().messageId &&

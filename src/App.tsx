@@ -567,13 +567,18 @@ export default function App() {
   }, [authReady, firebaseUser]);
 
   // 3. Real-time Messages Subcollection Listener for Active Conversation
+  const targetConversationId =
+    activeConversationId ||
+    (isDemoMode ? demoConversations[0]?.id : realRawConversations[0]?.id) ||
+    '';
+
   useEffect(() => {
-    if (!authReady || !firebaseUser || isDemoMode || !activeConversationId) return;
+    if (!authReady || !firebaseUser || isDemoMode || !targetConversationId) return;
 
     const uid = firebaseUser.uid;
-    const msgsPath = `conversations/${activeConversationId}/messages`;
+    const msgsPath = `conversations/${targetConversationId}/messages`;
     const msgsQuery = query(
-      collection(db, 'conversations', activeConversationId, 'messages'),
+      collection(db, 'conversations', targetConversationId, 'messages'),
       where('participantIds', 'array-contains', uid)
     );
 
@@ -589,7 +594,7 @@ export default function App() {
               : Date.now();
           loaded.push({
             id: docSnap.id,
-            conversationId: activeConversationId,
+            conversationId: targetConversationId,
             senderId: String(data.senderId || ''),
             text: String(data.text || ''),
             timestamp: formatTimestampLabel(data.createdAt, 'Just now'),
@@ -603,7 +608,7 @@ export default function App() {
 
         setRealMessagesByConv((prev) => ({
           ...prev,
-          [activeConversationId]: loaded,
+          [targetConversationId]: loaded,
         }));
       },
       (error) => {
@@ -612,7 +617,7 @@ export default function App() {
     );
 
     return () => unsubMsgs();
-  }, [authReady, firebaseUser, isDemoMode, activeConversationId]);
+  }, [authReady, firebaseUser, isDemoMode, targetConversationId]);
 
   // Compute Active User Profile
   const currentUser: StudentUser = useMemo(() => {
@@ -823,54 +828,106 @@ export default function App() {
     book: BookListing,
     buyerId: string,
     sellerId: string,
-    initialText: string
+    initialText: string,
+    forceSendMessage = false
   ): Promise<string> => {
+    const senderUid = firebaseUser?.uid || currentUser.id;
     const safeListingId = book.id.replace(/[^a-zA-Z0-9_-]/g, '_');
     const safeBuyerId = buyerId.replace(/[^a-zA-Z0-9_-]/g, '_');
     const safeSellerId = sellerId.replace(/[^a-zA-Z0-9_-]/g, '_');
     const convId = `conv_${safeListingId}_${safeBuyerId}_${safeSellerId}`.slice(0, 120);
+    const participantIds = [safeBuyerId, safeSellerId];
 
     const convRef = doc(db, 'conversations', convId);
     const existingSnap = await getDoc(convRef);
 
     const safeMessage = initialText.slice(0, 500);
+    const safeTitle = (book.title || 'School Textbook').slice(0, 150);
+    const safePrice = Math.max(1, Math.min(50000, Number(book.price) || 200));
+    const safeCondition = book.condition || 'Good';
+    const safeCover = (book.coverImage || '').slice(0, 195000);
+
+    let shouldWriteInitialMessage = true;
 
     if (existingSnap.exists()) {
-      await updateDoc(convRef, {
-        lastMessage: safeMessage,
-        lastMessageSenderId: currentUser.id,
-        lastMessageAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
+      if (forceSendMessage) {
+        await updateDoc(convRef, {
+          lastMessage: safeMessage,
+          lastMessageSenderId: senderUid,
+          lastMessageAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+      } else {
+        shouldWriteInitialMessage = false;
+      }
     } else {
       await setDoc(convRef, {
         conversationId: convId,
-        participantIds: [safeBuyerId, safeSellerId],
+        participantIds,
         buyerId: safeBuyerId,
         sellerId: safeSellerId,
         listingId: safeListingId,
-        bookTitle: book.title.slice(0, 150),
-        bookPrice: Math.max(1, Math.min(50000, Number(book.price) || 200)),
-        bookCondition: book.condition,
-        bookCover: book.coverImage.slice(0, 195000),
+        bookTitle: safeTitle,
+        bookPrice: safePrice,
+        bookCondition: safeCondition,
+        bookCover: safeCover,
         lastMessage: safeMessage,
-        lastMessageSenderId: currentUser.id,
+        lastMessageSenderId: senderUid,
         lastMessageAt: serverTimestamp(),
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
     }
 
-    const msgId = `msg_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
-    await setDoc(doc(db, 'conversations', convId, 'messages', msgId), {
-      messageId: msgId,
-      conversationId: convId,
-      participantIds: [safeBuyerId, safeSellerId],
-      senderId: currentUser.id,
-      text: safeMessage,
-      read: false,
-      createdAt: serverTimestamp(),
+    // Optimistically ensure conversation is present in local state immediately
+    setRealRawConversations((prev) => {
+      if (prev.some((c) => c.id === convId)) {
+        return forceSendMessage
+          ? prev.map((c) =>
+              c.id === convId
+                ? {
+                    ...c,
+                    lastMessage: safeMessage,
+                    lastMessageSenderId: senderUid,
+                    lastTimestamp: 'Just now',
+                    updatedMillis: Date.now(),
+                  }
+                : c
+            )
+          : prev;
+      }
+      return [
+        {
+          id: convId,
+          listingId: safeListingId,
+          bookTitle: safeTitle,
+          bookPrice: safePrice,
+          bookCondition: safeCondition,
+          bookCover: safeCover,
+          participantIds,
+          buyerId: safeBuyerId,
+          sellerId: safeSellerId,
+          lastMessage: safeMessage,
+          lastMessageSenderId: senderUid,
+          lastTimestamp: 'Just now',
+          updatedMillis: Date.now(),
+        },
+        ...prev,
+      ];
     });
+
+    if (shouldWriteInitialMessage) {
+      const msgId = `msg_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+      await setDoc(doc(db, 'conversations', convId, 'messages', msgId), {
+        messageId: msgId,
+        conversationId: convId,
+        participantIds,
+        senderId: senderUid,
+        text: safeMessage,
+        read: false,
+        createdAt: serverTimestamp(),
+      });
+    }
 
     return convId;
   };
@@ -961,7 +1018,8 @@ export default function App() {
         book,
         firebaseUser.uid,
         book.sellerId,
-        `📘 Buy Request Sent: ${safeMsg}`
+        `📘 Buy Request Sent: ${safeMsg}`,
+        true
       );
 
       setActiveConversationId(convId);
@@ -1048,12 +1106,16 @@ export default function App() {
     try {
       await fetchUserProfile(sellerId);
       await fetchUserProfile(buyerId);
-      const firstText = `Hi! I'm interested in your textbook "${book.title}" (₹${book.price}). Is it still available?`;
+      const firstText =
+        buyerId === firebaseUser.uid
+          ? `Hi! I'm interested in your textbook "${book.title}" (₹${book.price}). Is it still available?`
+          : `Hi! I received your request for "${book.title}" (₹${book.price}). Let's coordinate the book exchange!`;
       const convId = await getOrCreateRealConversation(
         book,
         buyerId,
         sellerId,
-        firstText
+        firstText,
+        false
       );
       setActiveConversationId(convId);
       setActiveScreen('chat');
@@ -1105,19 +1167,16 @@ export default function App() {
 
     const convId = activeConversation.id;
     const msgId = `msg_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    const participantIds =
+      activeConversation.participantIds && activeConversation.participantIds.length === 2
+        ? activeConversation.participantIds
+        : [firebaseUser.uid, activeConversation.otherStudentId];
 
     try {
-      await updateDoc(doc(db, 'conversations', convId), {
-        lastMessage: safeText,
-        lastMessageSenderId: firebaseUser.uid,
-        lastMessageAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
-
       const msgPayload: Record<string, unknown> = {
         messageId: msgId,
         conversationId: convId,
-        participantIds: activeConversation.participantIds,
+        participantIds,
         senderId: firebaseUser.uid,
         text: safeText,
         read: false,
@@ -1131,6 +1190,13 @@ export default function App() {
         doc(db, 'conversations', convId, 'messages', msgId),
         msgPayload
       );
+
+      await updateDoc(doc(db, 'conversations', convId), {
+        lastMessage: safeText,
+        lastMessageSenderId: firebaseUser.uid,
+        lastMessageAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
     } catch (err) {
       handleFirestoreError(
         err,
